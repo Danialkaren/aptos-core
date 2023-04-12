@@ -15,7 +15,7 @@ use move_core_types::account_address::AccountAddress;
 use rand::{seq::SliceRandom, thread_rng};
 use std::{
     cmp::{Ordering, Reverse},
-    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BinaryHeap, HashMap, HashSet, VecDeque},
     hash::Hash,
     time::{Duration, Instant},
 };
@@ -156,7 +156,7 @@ impl BatchKey {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Hash)]
 struct BatchSortKey {
     batch_key: BatchKey,
     gas_bucket_start: u64,
@@ -168,6 +168,10 @@ impl BatchSortKey {
             batch_key: BatchKey::from_info(info),
             gas_bucket_start: info.gas_bucket_start(),
         }
+    }
+
+    pub fn author(&self) -> PeerId {
+        self.batch_key.author
     }
 }
 
@@ -189,56 +193,6 @@ impl Ord for BatchSortKey {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
-struct BatchExpirationKey {
-    batch_sort_key: BatchSortKey,
-    expiration: u64,
-}
-
-impl BatchExpirationKey {
-    pub fn from_info(info: &BatchInfo) -> Self {
-        Self {
-            batch_sort_key: BatchSortKey::from_info(info),
-            expiration: info.expiration(),
-        }
-    }
-
-    pub fn split_key(timestamp: u64) -> Self {
-        Self {
-            batch_sort_key: BatchSortKey {
-                batch_key: BatchKey {
-                    author: AccountAddress::ZERO,
-                    batch_id: BatchId::new(0),
-                },
-                gas_bucket_start: 0,
-            },
-            expiration: timestamp,
-        }
-    }
-}
-
-impl PartialOrd<Self> for BatchExpirationKey {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for BatchExpirationKey {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // descending
-        match other.expiration.cmp(&self.expiration) {
-            Ordering::Equal => {},
-            ordering => return ordering,
-        }
-        // descending
-        other
-            .batch_sort_key
-            .batch_key
-            .batch_id
-            .cmp(&self.batch_sort_key.batch_key.batch_id)
-    }
-}
-
 pub struct ProofQueue {
     my_peer_id: PeerId,
     // Queue per peer to ensure fairness between peers and priority within peer
@@ -246,7 +200,7 @@ pub struct ProofQueue {
     // ProofOfStore and insertion_time. None if committed
     batch_to_proof: HashMap<BatchKey, Option<(ProofOfStore, Instant)>>,
     // Expiration index
-    expirations: BTreeSet<BatchExpirationKey>,
+    expirations: TimeExpirations<BatchSortKey>,
     latest_block_timestamp: u64,
     remaining_txns: u64,
     remaining_proofs: u64,
@@ -260,7 +214,7 @@ impl ProofQueue {
             my_peer_id,
             author_to_batches: HashMap::new(),
             batch_to_proof: HashMap::new(),
-            expirations: BTreeSet::new(),
+            expirations: TimeExpirations::new(),
             latest_block_timestamp: 0,
             remaining_txns: 0,
             remaining_proofs: 0,
@@ -303,11 +257,12 @@ impl ProofQueue {
         let author = proof.author();
         let bucket = proof.gas_bucket_start();
         let num_txns = proof.num_txns();
+        let expiration = proof.expiration();
 
+        let batch_sort_key = BatchSortKey::from_info(proof.info());
         let queue = self.author_to_batches.entry(author).or_default();
-        queue.insert(BatchSortKey::from_info(proof.info()), proof.info().clone());
-        self.expirations
-            .insert(BatchExpirationKey::from_info(proof.info()));
+        queue.insert(batch_sort_key.clone(), proof.info().clone());
+        self.expirations.add_item(batch_sort_key, expiration);
         self.batch_to_proof
             .insert(batch_key, Some((proof, Instant::now())));
 
@@ -406,19 +361,14 @@ impl ProofQueue {
         );
         self.latest_block_timestamp = block_timestamp;
 
-        let split_key = BatchExpirationKey::split_key(block_timestamp);
-        let expired = self.expirations.split_off(&split_key);
-
+        let expired = self.expirations.expire(block_timestamp);
         let mut num_expired_but_not_committed = 0;
-        for expiration_key in &expired {
-            if let Some(mut queue) = self
-                .author_to_batches
-                .remove(&expiration_key.batch_sort_key.batch_key.author)
-            {
-                if let Some(batch) = queue.remove(&expiration_key.batch_sort_key) {
+        for key in &expired {
+            if let Some(mut queue) = self.author_to_batches.remove(&key.author()) {
+                if let Some(batch) = queue.remove(key) {
                     if self
                         .batch_to_proof
-                        .get(&expiration_key.batch_sort_key.batch_key)
+                        .get(&key.batch_key)
                         .expect("Entry for unexpired batch must exist")
                         .is_some()
                     {
@@ -428,13 +378,10 @@ impl ProofQueue {
                             .observe((block_timestamp - batch.expiration()) as f64);
                         self.dec_remaining(&batch.author(), batch.num_txns());
                     }
-                    claims::assert_some!(self
-                        .batch_to_proof
-                        .remove(&expiration_key.batch_sort_key.batch_key));
+                    claims::assert_some!(self.batch_to_proof.remove(&key.batch_key));
                 }
                 if !queue.is_empty() {
-                    self.author_to_batches
-                        .insert(expiration_key.batch_sort_key.batch_key.author, queue);
+                    self.author_to_batches.insert(key.author(), queue);
                 }
             }
         }
