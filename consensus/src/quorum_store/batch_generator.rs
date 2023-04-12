@@ -20,7 +20,6 @@ use aptos_mempool::QuorumStoreRequest;
 use aptos_types::{transaction::SignedTransaction, PeerId};
 use futures_channel::mpsc::Sender;
 use itertools::Itertools;
-use rand::{thread_rng, RngCore};
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -73,7 +72,7 @@ impl BatchGenerator {
             id.increment();
             id
         } else {
-            BatchId::new(thread_rng().next_u64())
+            BatchId::new(aptos_infallible::duration_since_epoch().as_micros() as u64)
         };
         debug!("Initialized with batch_id of {}", batch_id);
         let mut incremented_batch_id = batch_id;
