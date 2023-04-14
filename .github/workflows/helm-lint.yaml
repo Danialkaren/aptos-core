@@ -24,16 +24,22 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@13ae5bb136fac2878aff31522b9efb785519f984 # pin@v4
 
-      - name: Install Python Dependencies
-        run: pip install -r testsuite/requirements.txt
+      # Install Poetry.
+      - uses: snok/install-poetry@v1
+        with:
+          version: 1.4.2
+
+      # Install Python dependencies.
+      - name: Install Python dependencies
+        run: poetry -C testsuite install
 
       - name: Should run lint
         run: >
-          python testsuite/determinator.py changed-files --github-output-key
-          SHOULD_RUN --pattern 'terraform/helm/.*' ${{
-          steps.changed-files.outputs.all_changed_files }}
+          testsuite/determinator.sh changed-files --github-output-key SHOULD_RUN --pattern 'terraform/helm/.*' ${{steps.changed-files.outputs.all_changed_files }}
         id: should-run-tests
 
       - name: Run Helm Lint
         if: steps.should-run-tests.outputs.SHOULD_RUN == 'true'
-        run: python testsuite/lint.py helm terraform/helm/*
+        run: |
+          source .venv/bin/activate
+          python testsuite/lint.py helm terraform/helm/*
