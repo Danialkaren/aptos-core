@@ -308,7 +308,7 @@ impl ProofQueue {
                 let to_skip = queue.len() - num_remaining;
 
                 let mut num_read = 0;
-                for (sort_key, batch) in queue.iter().rev().skip(to_skip).take(num_remaining) {
+                for (sort_key, batch) in queue.iter().rev().skip(to_skip) {
                     num_read += 1;
                     if excluded_batches.contains(batch) {
                         excluded_txns += batch.num_txns();
