@@ -6,7 +6,14 @@ pub mod config;
 pub mod constants;
 pub mod file_store_operator;
 
-use aptos_protos::datastream::v1::indexer_stream_client::IndexerStreamClient;
+use aptos_inspection_service::inspection_service::encode_metrics;
+use aptos_protos::{
+    datastream::v1::indexer_stream_client::IndexerStreamClient,
+    transaction::testing1::v1::Transaction, util::timestamp::Timestamp,
+};
+use prometheus::TextEncoder;
+use prost::Message;
+use warp::{http::Response, Filter};
 
 pub type GrpcClientType = IndexerStreamClient<tonic::transport::Channel>;
 
@@ -48,4 +55,35 @@ pub fn build_protobuf_encoded_transaction_wrappers(
         .enumerate()
         .map(|(ind, encoded_transaction)| (encoded_transaction, starting_version + ind as u64))
         .collect()
+}
+
+fn metrics() -> Vec<u8> {
+    encode_metrics(TextEncoder)
+}
+
+pub async fn register_probes_and_metrics_handler(port: u16) {
+    let readiness = warp::path("readiness")
+        .map(move || warp::reply::with_status("ready", warp::http::StatusCode::OK));
+    let metrics_endpoint = warp::path("metrics").map(|| {
+        Response::builder()
+            .header("Content-Type", "text/plain")
+            .body(metrics())
+    });
+    warp::serve(readiness.or(metrics_endpoint))
+        .run(([0, 0, 0, 0], port))
+        .await;
+}
+
+pub fn decode_transaction_bytes(encoded_pb: &str) -> Option<Transaction> {
+    let transaction_pb = base64::decode(encoded_pb).ok()?;
+    Transaction::decode(transaction_pb.as_slice()).ok()
+}
+
+pub fn time_diff_since_pb_timestamp_in_milliseconds(timestamp: Timestamp) -> u64 {
+    let current_timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("SystemTime before UNIX EPOCH!");
+    let current_timestamp = current_timestamp.as_nanos() as u64;
+    (current_timestamp - timestamp.nanos as u64 - timestamp.seconds as u64 * 1_000_000_000)
+        / 1_000_000
 }

@@ -1,6 +1,10 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::metrics::{
+    ERROR_COUNT, LATEST_PROCESSED_VERSION, PROCESSED_BATCH_SIZE, PROCESSED_LATENCY_IN_MILLISECONDS,
+    PROCESSED_VERSIONS_COUNT,
+};
 use aptos_indexer_grpc_utils::{
     cache_operator::CacheOperator,
     config::IndexerGrpcConfig,
@@ -14,6 +18,7 @@ use aptos_protos::datastream::v1::{
     RawDatastreamRequest, RawDatastreamResponse,
 };
 use futures::{self, StreamExt};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type ChainID = u32;
 type StartingVersion = u64;
@@ -38,6 +43,7 @@ pub(crate) enum GrpcDataStatus {
     ChunkDataOk {
         start_version: u64,
         num_of_transactions: u64,
+        data_latency_in_milliseconds: Option<u64>,
     },
     /// Init signal received with start version of current stream.
     /// No two `Init` signals will be sent in the same stream.
@@ -142,6 +148,13 @@ async fn process_raw_datastream_response(
         datastream::raw_datastream_response::Response::Data(data) => {
             let transaction_len = data.transactions.len();
             let start_version = data.transactions.first().unwrap().version;
+            let last_transaction_timestamp_in_nanos = data
+                .transactions
+                .last()
+                .unwrap()
+                .timestamp
+                .as_ref()
+                .map(|t| t.seconds as u64 * 1_000_000_000 + t.nanos as u64);
             let transactions = data
                 .transactions
                 .into_iter()
@@ -158,12 +171,23 @@ async fn process_raw_datastream_response(
             match cache_operator.update_cache_transactions(transactions).await {
                 Ok(_) => {},
                 Err(e) => {
+                    ERROR_COUNT
+                        .with_label_values(&["failed_to_update_cache_version"])
+                        .inc();
                     anyhow::bail!("Update cache with version failed: {}", e);
                 },
             }
+            let data_latency_in_milliseconds = last_transaction_timestamp_in_nanos.map(|t| {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("System time is before UNIX_EPOCH.")
+                    .as_nanos() as u64;
+                (now - t) / 1_000_000
+            });
             Ok(GrpcDataStatus::ChunkDataOk {
                 start_version,
                 num_of_transactions: transaction_len as u64,
+                data_latency_in_milliseconds,
             })
         },
     }
@@ -238,6 +262,7 @@ async fn process_streaming_response(
             Ok(r) => r,
             Err(err) => {
                 error!("[Indexer Cache] Streaming error: {}", err);
+                ERROR_COUNT.with_label_values(&["streaming_error"]).inc();
                 break;
             },
         };
@@ -251,10 +276,18 @@ async fn process_streaming_response(
                 GrpcDataStatus::ChunkDataOk {
                     start_version,
                     num_of_transactions,
+                    data_latency_in_milliseconds,
                 } => {
                     current_version += num_of_transactions;
                     transaction_count += num_of_transactions;
                     tps_calculator.tick_now(num_of_transactions);
+
+                    PROCESSED_VERSIONS_COUNT.inc_by(num_of_transactions);
+                    LATEST_PROCESSED_VERSION.set(current_version as i64);
+                    PROCESSED_BATCH_SIZE.set(num_of_transactions as i64);
+                    if let Some(latency) = data_latency_in_milliseconds {
+                        PROCESSED_LATENCY_IN_MILLISECONDS.set(latency as i64);
+                    };
                     aptos_logger::info!(
                         start_version = start_version,
                         num_of_transactions = num_of_transactions,
@@ -266,6 +299,7 @@ async fn process_streaming_response(
                         current_version = new_version,
                         "[Indexer Cache] Init signal received twice."
                     );
+                    ERROR_COUNT.with_label_values(&["data_init_twice"]).inc();
                     break;
                 },
                 GrpcDataStatus::BatchEnd {
@@ -283,6 +317,9 @@ async fn process_streaming_response(
                             actual_current_version = start_version + num_of_transactions,
                             "[Indexer Cache] End signal received with wrong version."
                         );
+                        ERROR_COUNT
+                            .with_label_values(&["data_end_wrong_version"])
+                            .inc();
                         break;
                     }
                     cache_operator
@@ -303,6 +340,7 @@ async fn process_streaming_response(
                     "[Indexer Cache] Process raw datastream response failed: {}",
                     e
                 );
+                ERROR_COUNT.with_label_values(&["response_error"]).inc();
                 break;
             },
         }

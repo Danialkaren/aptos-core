@@ -14,7 +14,9 @@ use crate::{
     schema::ledger_infos,
     utils::{
         counters::{
-            LATEST_PROCESSED_VERSION, PROCESSOR_ERRORS, PROCESSOR_INVOCATIONS, PROCESSOR_SUCCESSES,
+            LATEST_PROCESSED_VERSION, PROCESSOR_DATA_PROCESSED_LATENCY_IN_MILLISECS,
+            PROCESSOR_DATA_RECEIVED_LATENCY, PROCESSOR_ERRORS_COUNT, PROCESSOR_INVOCATIONS_COUNT,
+            PROCESSOR_SUCCESSES_COUNT,
         },
         database::{execute_with_better_error, new_db_pool},
     },
@@ -38,7 +40,10 @@ use diesel::{
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use futures::StreamExt;
 use prost::Message;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 pub type PgPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
 pub type PgDbPool = Arc<PgPool>;
@@ -141,6 +146,7 @@ impl Worker {
         let request = grpc_request_builder(
             starting_version,
             self.config.indexer_grpc_auth_token.clone(),
+            self.config.processor_name.clone(),
         );
 
         let mut resp_stream = rpc_client
@@ -210,6 +216,7 @@ impl Worker {
                         let request = grpc_request_builder(
                             batch_start_version,
                             self.config.indexer_grpc_auth_token.clone(),
+                            self.config.processor_name.clone(),
                         );
                         resp_stream = rpc_client
                             .raw_datastream(request)
@@ -251,16 +258,51 @@ impl Worker {
             let mut tasks = vec![];
             for transactions in transactions_batches {
                 let processor_clone = processor.clone();
+                let auth_token = self.config.indexer_grpc_auth_token.clone();
                 let task = tokio::spawn(async move {
                     let start_version = transactions.as_slice().first().unwrap().version;
                     let end_version = transactions.as_slice().last().unwrap().version;
+                    let txn_timestamp_in_milles = transactions
+                        .as_slice()
+                        .first()
+                        .unwrap()
+                        .timestamp
+                        .as_ref()
+                        .map(|t| t.seconds * 1000 + t.nanos as i64 / 1_000_000);
+                    let current_timestamp_in_milles = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as i64;
 
-                    PROCESSOR_INVOCATIONS
+                    info!(
+                        request_token = auth_token,
+                        processor_name = processor_name,
+                        start_version = start_version,
+                        end_version = end_version,
+                        "[Parser] Received chunk of transactions."
+                    );
+                    if let Some(t) = txn_timestamp_in_milles {
+                        PROCESSOR_DATA_RECEIVED_LATENCY
+                            .with_label_values(&[auth_token.as_str(), processor_name])
+                            .set(current_timestamp_in_milles - t);
+                    }
+                    PROCESSOR_INVOCATIONS_COUNT
                         .with_label_values(&[processor_name])
                         .inc();
-                    processor_clone
+                    let processed_result = processor_clone
                         .process_transactions(transactions, start_version, end_version)
-                        .await
+                        .await;
+
+                    let current_timestamp_in_milles = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as i64;
+                    if let Some(t) = txn_timestamp_in_milles {
+                        PROCESSOR_DATA_PROCESSED_LATENCY_IN_MILLISECS
+                            .with_label_values(&[auth_token.as_str(), processor_name])
+                            .set(current_timestamp_in_milles - t);
+                    }
+                    processed_result
                 });
                 tasks.push(task);
             }
@@ -268,13 +310,12 @@ impl Worker {
                 Ok(res) => res,
                 Err(err) => panic!("[Parser] Error processing transaction batches: {:?}", err),
             };
-
             // Update states depending on results of the batch processing
             let mut processed_versions = vec![];
             for res in batches {
                 let processed: ProcessingResult = match res {
                     Ok(versions) => {
-                        PROCESSOR_SUCCESSES
+                        PROCESSOR_SUCCESSES_COUNT
                             .with_label_values(&[processor_name])
                             .inc();
                         versions
@@ -286,7 +327,9 @@ impl Worker {
                             error = ?e,
                             "[Parser] Error processing transactions"
                         );
-                        PROCESSOR_ERRORS.with_label_values(&[processor_name]).inc();
+                        PROCESSOR_ERRORS_COUNT
+                            .with_label_values(&[processor_name])
+                            .inc();
                         panic!();
                     },
                 };
@@ -417,6 +460,7 @@ impl Worker {
 pub fn grpc_request_builder(
     starting_version: u64,
     grpc_auth_token: String,
+    processor_name: String,
 ) -> tonic::Request<RawDatastreamRequest> {
     let mut request = tonic::Request::new(RawDatastreamRequest {
         starting_version: Some(starting_version),
@@ -425,6 +469,10 @@ pub fn grpc_request_builder(
     request.metadata_mut().insert(
         aptos_indexer_grpc_utils::constants::GRPC_AUTH_TOKEN_HEADER,
         grpc_auth_token.parse().unwrap(),
+    );
+    request.metadata_mut().insert(
+        aptos_indexer_grpc_utils::constants::GRPC_REQUEST_NAME_HEADER,
+        processor_name.parse().unwrap(),
     );
     request
 }
