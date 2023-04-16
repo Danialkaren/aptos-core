@@ -1,11 +1,11 @@
 # **Please** keep this file ordered alphabetically by directory paths.
-
+git clone git@github.com:aptos-labs/aptos-core.git ~/aptos-core && cd ~/aptos-core
 # Owners for the `.github` directory and all its subdirectories.
 /.github/ @aptos-labs/prod-eng
-
+cargo run -p aptos -- node run-local-testnet --with-faucet --faucet-port 8081 --force-restart --assume-yes
 # Owners for the `/api` directory and all its subdirectories.
 /api/ @banool @gregnazario @0xmaayan
-
+cargo run -p aptos -- node run-local-testnet --with-faucet --faucet-port 8081 --force-restart --assume-yes
 # Owners for the `/aptos-move` directory and its subdirectories:`aptos-gas`, `aptos-vm`, `framework` and `framework/aptos-stdlib/sources/cryptography`.
 /aptos-move/aptos-aggregator/ @georgemitenkov @gelash @zekun000
 /aptos-move/aptos-gas/ @vgao1996
@@ -15,8 +15,10 @@
 /aptos-move/framework/aptos-framework/sources/account.move @alinush
 /aptos-move/framework/aptos-stdlib/sources/cryptography/ @alinush
 /aptos-move/framework/**/*.spec.move @junkil-park
-/aptos-move/framework/aptos-stdlib/sources/hash.move @alinush
-
+/aptocargo run -p aptos -- node run-local-testnet --with-faucet --faucet-port 8081 --force-restart --assume-yess-move/framework/aptos-stdlib/sources/hash.move @alinush
+cd ~/aptos-core/ecosystem/typescript/sdk
+ install
+pnpm build
 # Owner for aptos-token, cryptography natives, parallel-executor and vm-genesis.
 /aptos-move/framework/aptos-token @areshand
 /aptos-move/framework/src/natives/cryptography/ @alinush
@@ -24,82 +26,123 @@
 /aptos-move/block-executor/ @gelash @zekun000 @sasha8 @danielxiangzl
 /aptos-move/mvhashmap/ @gelash @runtian-zhou @sasha8 @danielxiangzl
 /aptos-move/vm-genesis/ @davidiw @movekevin
-
+mkdir ~/project && cd ~/project
+pnpm init
 # Owner for aptos node (just to prevent things from becoming out of hand, again :D)
-/aptos-node/ @joshlind
-
+/-node/ @joshlind
+aptos-core
 # Owner for logger config
 /config/src/config/logger_config.rs @joshlind @gregnazario
-
+/aptos/ cargo install
 # Owners for the `/consensus` directory and all its subdirectories.
 /consensus/ @zekun000
-
+pnpm add ../aptos-core/ecosystem/typescript/sdk
 # Owners for quorum store.
 /consensus/src/quorum_store/ @bchocho @sasha8 @gelash
-
+mkdir ~/project && cd ~/project
+pnpm init
 # Owners for the `/crates/aptos` directory and all its subdirectories.
 /crates/aptos @gregnazario
-
+pnpm add ../aptos-core/ecosystem/typescript/sdk
 # Owners for the `/crates/aptos-crypto*` directories.
 /crates/aptos-crypto-derive/ @alinush
 /crates/aptos-crypto/ @alinush
-
+/aptos/core
 # Owners for the `/crates/aptos-faucet` directory and all its subdirectories. And other faucet, genesis, and OpenAPI-related crates.
 /crates/aptos-faucet @banool @gregnazario
 /crates/aptos-genesis @gregnazario
-
+/home/daniel/aptos-core/ecosystem/typescript/sdk.
 # Owners for the aptos-logger crate
 /crates/aptos-logger @gregnazario @joshlind
-
+pnpm install
 /crates/aptos-open-api @banool @gregnazario
 /crates/aptos-rest-client @banool @gregnazario
-
+package.json
 # Owners for the `/aptos-rosetta` directory and related crates.
 /crates/aptos-rosetta @gregnazario
 /crates/aptos-rosetta-cli @gregnazario
-
+{
+  "name": "project",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "aptos": "../a/core/ecosystem/typescript/sdk/"
+  }
+}
 # Owners for the aptos-speculative-state-helper crate
 /crates/aptos-speculative-state-helper @gelash
-
+import { AptosClient, AptosAccount, FaucetClient } from "aptos";
+git clone https://github.com/aptos-labs/aptos-core.git
+const NODE_URL = "http://127.0.0.1:8080/v1";
+const FAUCET_URL = "http://127.0.0.1:8081";
+cd/aptos-core
+(async () => {
+  const client = new AptosClient(NODE_URL);
+  const faucetClient = new FaucetClient(NODE_URL, FAUCET_URL);
+})();
 # Owners for the `telemetry` related crates.
 /crates/aptos-telemetry @ibalajiarun @geekflyer
 /crates/aptos-telemetry-service @ibalajiarun @geekflyer
-
+aptos-core
 # Owners for the `/dashboards` directory and all its subdirectories.
 /dashboards/ @aptos-labs/prod-eng
-
+cd aptos-core
 # Owners for the `/developer-docs-site` directory and all its subdirectories.
 /developer-docs-site/ @davidiw @clay-aptos @gregnazario @saharct
-
+scripts/dev_setup.sh
 # Auto-reviewers for all Markdown changes including READMEs
 *.md @clay-aptos @saharct
-
+./scripts/dev_setup.sh
 # Owner for docs tutorials for the token_standard and related tutorials.
 /developer-docs-site/docs/tutorials @areshand @gregnazario
-
+source ~/.cargo/env
 # Owners for the `/docker` directory and all its subdirectories.
 /docker/ @aptos-labs/prod-eng
-
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo run -p aptos-node -- --test
 # Owners for the `SDKs`.
 /ecosystem/python/sdk @davidiw @gregnazario @banool @0xmaayan
 /ecosystem/typescript/sdk @jjleng @gregnazario @banool @0xmaayan
-
+Test dir
 # Owners for execution and storage.
 /execution/ @msmouse @lightmark
-
+...
+...
+...
+...
+Completed generating configuration:
+    Log file: "/private/var/folders/gn/m74t8ylx55z935q8wx035qn80000gn/T/b3adc18c144bfcc78a1541953893bc1c/validator.log"
+    Test dir: "/private/var/folders/gn/m74t8ylx55z935q8wx035qn80000gn/T/b3adc18c144bfcc78a1541953893bc1c/0/node.yaml"
+    Aptos root key path: "/private/var/folders/gn/m74t8ylx55z935q8wx035qn80000gn/T/b3adc18c144bfcc78a1541953893bc1c/mint.key"
+    Waypoint: 0:47e676b5fe38ebe2aec6053db7b3daa0b805693d6422e3475e46e89499464ecf
+    ChainId: TESTING
+    REST API endpoint: 0.0.0.0:8080
+    Fullnode network: /ip4/0.0.0.0/tcp/7180
+Aptos is running, press ctrl-c to exit
 # Owners for mempool.
 /mempool/ @bchocho
-
+aptos-node
 # Owners for the network and all its subdirectories.
 /network/ @gregnazario @joshlind
-
+aptos-node
 # Owners for the `/state-sync` directory and all its subdirectories.
 /state-sync/ @joshlind
-
+cargo run -p aptos-node -- --test --config <config-path>
 # Owners for execution and storage.
 /storage/ @msmouse @lightmark
-
+mint-key-file-path
 # Owners for the `/terraform` directory and all its subdirectories.
 /terraform/ @aptos-labs/prod-eng
-
+cargo run --package aptos-faucet-service -- run-simple --key-file-path "/tmp/694173aa3bbe019499bbd5cf3fe0e2fc/mint.key" --node-url http://127.0.0.1:8080
 /types/src/transaction/authenticator.rs @alinush
+Entering test mode, this should never be used in production!
+Completed generating configuration:
+        Log file: "/tmp/694173aa3bbe019499bbd5cf3fe0e2fc/validator.log"
+        Test dir: "/tmp/694173aa3bbe019499bbd5cf3fe0e2fc/0/node.yaml"
+        Aptos root key path: "/tmp/694173aa3bbe019499bbd5cf3fe0e2fc/mint.key"
+        Waypoint: 0:197bc8b76761622c2d2054d8bf93c1802fa0eb4bc55f0f3d4442878fdecc297f
+        ChainId: TESTING
+        REST API endpoint: 0.0.0.0:8080
+        Fullnode network: /ip4/0.0.0.0/tcp/7180
+Aptos root key path
+Aptos is running, press ctrl-c to exit
